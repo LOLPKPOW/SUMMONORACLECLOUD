@@ -93,7 +93,7 @@ async def speak_with_openai(text: str, voice: str = "echo") -> str:
         url = s3.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": bucket, "Key": s3_key},
-            ExpiresIn=300  # 5 minutes expiry recommended for security
+            ExpiresIn=86400
         )
         print("[INFO] Presigned URL:", url)
         return url
