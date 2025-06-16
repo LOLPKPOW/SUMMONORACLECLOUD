@@ -11,5 +11,6 @@ override.tf.json
 terraform.tfvars.json
 terraform.tfstate
 terraform.tfstate.backup
+.terraform.tfstate.lock.info
 
 .env
