@@ -136,4 +136,3 @@ async def oracle_respond(req: Request):
         "spoken": answer,
         "audio_file": audio_url
     }
-
