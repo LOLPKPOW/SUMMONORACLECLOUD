@@ -28,7 +28,12 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Generate revision tag
-        run: echo "REVISION_TAG=rev-$(date +%s)-${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: |
+          DATE_TAG=$(date +'%Y%m%d-%H%M')
+          SHORT_SHA=${GITHUB_SHA::7}
+          REVISION_TAG="SUMMONORACLE-${DATE_TAG}-main-${SHORT_SHA}"
+          echo "REVISION_TAG=$REVISION_TAG" >> $GITHUB_ENV
+          echo "Revision tag is: '$REVISION_TAG'"
 
       - name: Build and push Docker image
         run: |
@@ -45,18 +50,12 @@ jobs:
         run: |
           aws ecs describe-task-definition --task-definition ${{ secrets.TASK_DEF_FAMILY }} > task-def.json
 
-          jq '.taskDefinition |
+          jq --arg image "${{ secrets.ECR_REPO }}:$REVISION_TAG" '.taskDefinition |
             { family, containerDefinitions, executionRoleArn, taskRoleArn, networkMode, requiresCompatibilities, cpu, memory } |
-            .containerDefinitions[0].image = "${{ secrets.ECR_REPO }}:'"$REVISION_TAG"'"' \
-            > new-task-def.json \
-            task-def.json
+            .containerDefinitions[0].image = $image' task-def.json > new-task-def.json
 
           aws ecs register-task-definition --cli-input-json file://new-task-def.json
 
       - name: Update ECS service with new task definition
         run: |
-          aws ecs update-service \
-            --cluster ${{ secrets.ECS_CLUSTER }} \
-            --service ${{ secrets.ECS_SERVICE }} \
-            --force-new-deployment \
-            --task-definition ${{ secrets.TASK_DEF_FAMILY }}
+          aws ecs update-service --cluster ${{ secrets.ECS_CLUSTER }} --service ${{ secrets.ECS_SERVICE }} --force-new-deployment --task-definition ${{ secrets.TASK_DEF_FAMILY }}
