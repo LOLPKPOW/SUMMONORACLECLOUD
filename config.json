@@ -1,0 +1,7 @@
+{
+  "sacred_phrase": "invoke oracle clarity",
+  "clarity_duration_sec": 120,
+  "tts_voice": "en-GB-SoniaNeural",
+  "default_response": "THE ORACLE IS AWARE OF YOUR PRESENCE. SPEAK NOW… OR BE JUDGED.",
+  "fancy_voice": "echo"
+}
