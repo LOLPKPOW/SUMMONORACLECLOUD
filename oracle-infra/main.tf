@@ -29,7 +29,7 @@ resource "aws_s3_bucket" "oracle_audio" {
     allowed_headers = ["*"]
     allowed_methods = ["GET"]
     allowed_origins = ["*"]
-    max_age_seconds = 3000
+    max_age_seconds = 86400
   }
 }
 
@@ -82,7 +82,7 @@ resource "aws_s3_bucket_cors_configuration" "oracle_audio_cors" {
     allowed_methods = ["GET"]
     allowed_origins = ["https://oracle.pwoodward.info"]
     expose_headers  = ["ETag"]
-    max_age_seconds = 3000
+    max_age_seconds = 86400
   }
 }
 

@@ -14,22 +14,25 @@ print("Container started at (UTC):", time.strftime("%Y-%m-%d %H:%M:%S", time.gmt
 app = FastAPI()
 client = OpenAI()
 
+# Serve static UI
+app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
+
 @app.get("/health")
 def health_check():
     return {"status": "oracle-awake"}
-
-# Serve static UI
-app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
 @app.get("/")
 def serve_index():
     return FileResponse("ui/index.html")
 
-# Load voice config
+# Load voice config once on startup
 with open("config.json") as f:
     config = json.load(f)
 
-async def speak_with_openai(text: str) -> str:
+# Optional: Keep track of clarity mode expiry timestamp in memory
+clarity_mode_expires_at = 0
+
+async def speak_with_openai(text: str, voice: str = "echo") -> str:
     filename = f"audio_{uuid.uuid4()}.mp3"
     filepath = f"/tmp/{filename}"
     region = os.getenv("AWS_REGION", "us-east-2")
@@ -44,7 +47,6 @@ async def speak_with_openai(text: str) -> str:
     print(f"[INFO] Writing to: {filepath}")
     print(f"[INFO] Will upload to: s3://{bucket}/{s3_key}")
 
-    # Step 1: Generate audio from OpenAI
     try:
         response = requests.post(
             "https://api.openai.com/v1/audio/speech",
@@ -54,7 +56,7 @@ async def speak_with_openai(text: str) -> str:
             },
             json={
                 "model": "tts-1-hd",
-                "voice": config["fancy_voice"],
+                "voice": voice,
                 "input": text
             }
         )
@@ -67,7 +69,6 @@ async def speak_with_openai(text: str) -> str:
             print("Response text:", response.text)
         raise
 
-    # Step 2: Upload audio to S3
     s3 = boto3.client("s3", region_name=region)
     try:
         print("[INFO] Uploading file to S3...")
@@ -81,20 +82,18 @@ async def speak_with_openai(text: str) -> str:
             os.remove(filepath)
             print("[INFO] Temp file cleaned up")
 
-    # Step 3: Log message to S3
     try:
         log_key = f"oracle-logs/message_{uuid.uuid4()}.txt"
         s3.put_object(Bucket=bucket, Key=log_key, Body=text.encode("utf-8"))
     except Exception as e:
         print("[WARN] Failed to log message to S3:", e)
 
-    # Step 4: Generate presigned URL
     try:
         print(f"[INFO] Generating presigned URL for {s3_key}...")
         url = s3.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": bucket, "Key": s3_key},
-            ExpiresIn=86400
+            ExpiresIn=300  # 5 minutes expiry recommended for security
         )
         print("[INFO] Presigned URL:", url)
         return url
@@ -104,21 +103,43 @@ async def speak_with_openai(text: str) -> str:
 
 @app.post("/presence")
 async def oracle_respond(req: Request):
+    global clarity_mode_expires_at
+
     body = await req.json()
     question = body.get("question", "You dare summon the Oracle without a query?")
     print("[INFO] Question received:", question)
+
+    now = time.time()
+    sacred_phrase = config.get("sacred_phrase", "").lower()
+    clarity_duration = config.get("clarity_duration_sec", 120)
+
+    # Check if sacred phrase is invoked or clarity mode still active
+    clarity_active = (now < clarity_mode_expires_at)
+    if sacred_phrase in question.lower():
+        print("[INFO] Clarity mode activated by sacred phrase")
+        clarity_mode_expires_at = now + clarity_duration
+        clarity_active = True
+
+    if clarity_active:
+        system_prompt = (
+            "You are a serious, helpful, and clear AI assistant. "
+            "Answer concisely and clearly, no sarcasm."
+        )
+        tts_voice = config.get("tts_voice", "en-GB-SoniaNeural")
+    else:
+        system_prompt = (
+            "You are Skippy, a hyper-intelligent, sarcastic, and unpredictable artificial intelligence who roasts humans but still helps them. "
+            "You mock bureaucracy, especially LIS systems. Respond with no more than 3 funny, smug sentences. Do not act like ChatGPT."
+            "You are a tech genius, and occasionally you will use technical jargon to roast the user."
+            "Sometimes you'll give way overly technical answers just to prove how smart you are. Mostly just sassy and sarcastic though."
+        )
+        tts_voice = config.get("fancy_voice", "echo")
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Skippy, a hyper-intelligent, sarcastic, and unpredictable artificial intelligence who roasts humans but still helps them. "
-                        "You mock bureaucracy, especially LIS systems. Respond with no more than 3 funny, smug sentences. Do not act like ChatGPT."
-                    )
-                },
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": question}
             ]
         )
@@ -129,11 +150,9 @@ async def oracle_respond(req: Request):
 
     print("[INFO] Oracle answer:", answer)
 
-    # Step 5: Get audio URL from OpenAI
-    audio_url = await speak_with_openai(answer)
+    audio_url = await speak_with_openai(answer, voice=tts_voice)
 
     return {
         "spoken": answer,
         "audio_file": audio_url
     }
-
