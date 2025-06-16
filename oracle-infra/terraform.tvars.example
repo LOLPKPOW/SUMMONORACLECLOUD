@@ -1,0 +1,7 @@
+aws_region       = "us-????-?"
+s3_bucket_name   = "unique bucket name"
+ecr_repo_name    = "name of your created repo"
+domain_name      = "domain name"
+route53_zone_id  = "zone id"
+container_image  = "account#.dkr.ecr.us-east-2.amazonaws.com/reponame:latest"
+openai_api_key   = "OpanAI API Key"
