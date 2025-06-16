@@ -42,8 +42,8 @@ jobs:
             -t ${{ secrets.ECR_REPO }}:$REVISION_TAG \
             -t ${{ secrets.ECR_REPO }}:latest \
             -f dockerfile .
-          docker push ${{ secrets.ECR_REPO }}:$REVISION_TAG
           docker push ${{ secrets.ECR_REPO }}:latest
+          docker push ${{ secrets.ECR_REPO }}:$REVISION_TAG
 
       - name: Register new ECS task definition revision
         id: register-task
